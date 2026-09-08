@@ -470,8 +470,36 @@ fun ChatMessageItem(
             modifier = Modifier.fillMaxWidth(if (isUser) 0.82f else 0.95f)
         ) {
             Column(modifier = Modifier.padding(14.dp)) {
+                val parsedAnnotatedString = remember(message.text) {
+                    val text = message.text
+                    androidx.compose.ui.text.buildAnnotatedString {
+                        val lines = text.split("\n")
+                        lines.forEachIndexed { lineIdx, line ->
+                            if (lineIdx > 0) append("\n")
+                            val trimmedLine = line.trim()
+                            if (trimmedLine.startsWith("### ")) {
+                                val headingText = trimmedLine.removePrefix("### ")
+                                pushStyle(androidx.compose.ui.text.SpanStyle(fontSize = 18.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold))
+                                append(headingText)
+                                pop()
+                            } else {
+                                // Parse **bold** markdown in line
+                                val parts = line.split("**")
+                                parts.forEachIndexed { partIdx, part ->
+                                    if (partIdx % 2 == 1) {
+                                        pushStyle(androidx.compose.ui.text.SpanStyle(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold))
+                                        append(part)
+                                        pop()
+                                    } else {
+                                        append(part)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
                 Text(
-                    text = message.text,
+                    text = parsedAnnotatedString,
                     style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 20.sp),
                     color = if (isUser) Color.Black else MaterialTheme.colorScheme.onSurface
                 )

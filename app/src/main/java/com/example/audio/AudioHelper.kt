@@ -30,7 +30,8 @@ class AudioHelper(private val context: Context) {
     fun playBase64Audio(base64Data: String, id: String = java.util.UUID.randomUUID().toString()) {
         try {
             stopPlayback()
-            val audioBytes = Base64.decode(base64Data, Base64.DEFAULT)
+            val rawBytes = Base64.decode(base64Data, Base64.DEFAULT)
+            val audioBytes = ensureWavHeader(rawBytes)
             val tempFile = File.createTempFile("gemini_audio_", ".wav", context.cacheDir)
             FileOutputStream(tempFile).use { it.write(audioBytes) }
 
@@ -50,6 +51,52 @@ class AudioHelper(private val context: Context) {
             _isPlaying.value = false
             _activeAudioId.value = null
         }
+    }
+
+    private fun ensureWavHeader(pcmBytes: ByteArray, sampleRate: Int = 24000): ByteArray {
+        if (pcmBytes.size > 12 &&
+            pcmBytes[0] == 'R'.code.toByte() && pcmBytes[1] == 'I'.code.toByte() &&
+            pcmBytes[2] == 'F'.code.toByte() && pcmBytes[3] == 'F'.code.toByte()) {
+            return pcmBytes
+        }
+        val channels = 1.toShort()
+        val bitsPerSample = 16.toShort()
+        val byteRate = (sampleRate * channels * bitsPerSample / 8)
+        val blockAlign = (channels * bitsPerSample / 8).toShort()
+        val dataSize = pcmBytes.size
+        val chunkSize = 36 + dataSize
+
+        val header = ByteArray(44)
+        header[0] = 'R'.code.toByte(); header[1] = 'I'.code.toByte(); header[2] = 'F'.code.toByte(); header[3] = 'F'.code.toByte()
+        header[4] = (chunkSize and 0xff).toByte()
+        header[5] = ((chunkSize shr 8) and 0xff).toByte()
+        header[6] = ((chunkSize shr 16) and 0xff).toByte()
+        header[7] = ((chunkSize shr 24) and 0xff).toByte()
+        header[8] = 'W'.code.toByte(); header[9] = 'A'.code.toByte(); header[10] = 'V'.code.toByte(); header[11] = 'E'.code.toByte()
+        header[12] = 'f'.code.toByte(); header[13] = 'm'.code.toByte(); header[14] = 't'.code.toByte(); header[15] = ' '.code.toByte()
+        header[16] = 16; header[17] = 0; header[18] = 0; header[19] = 0
+        header[20] = 1; header[21] = 0
+        header[22] = channels.toByte(); header[23] = 0
+        header[24] = (sampleRate and 0xff).toByte()
+        header[25] = ((sampleRate shr 8) and 0xff).toByte()
+        header[26] = ((sampleRate shr 16) and 0xff).toByte()
+        header[27] = ((sampleRate shr 24) and 0xff).toByte()
+        header[28] = (byteRate and 0xff).toByte()
+        header[29] = ((byteRate shr 8) and 0xff).toByte()
+        header[30] = ((byteRate shr 16) and 0xff).toByte()
+        header[31] = ((byteRate shr 24) and 0xff).toByte()
+        header[32] = blockAlign.toByte(); header[33] = 0
+        header[34] = bitsPerSample.toByte(); header[35] = 0
+        header[36] = 'd'.code.toByte()
+        header[37] = 'a'.code.toByte()
+        header[38] = 't'.code.toByte()
+        header[39] = 'a'.code.toByte()
+        header[40] = (dataSize and 0xff).toByte()
+        header[41] = ((dataSize shr 8) and 0xff).toByte()
+        header[42] = ((dataSize shr 16) and 0xff).toByte()
+        header[43] = ((dataSize shr 24) and 0xff).toByte()
+
+        return header + pcmBytes
     }
 
     fun stopPlayback() {

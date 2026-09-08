@@ -61,14 +61,17 @@ class FirebaseSyncManager(private val context: Context) {
             auth?.addAuthStateListener { firebaseAuth ->
                 val user = firebaseAuth.currentUser
                 if (user != null) {
+                    val isAnon = user.isAnonymous
+                    val displayEmail = if (isAnon) null else user.email
+                    val name = user.displayName ?: if (isAnon) "Guest Explorer" else (user.email?.substringBefore("@") ?: "User")
                     _currentUser.value = UserProfile(
                         uid = user.uid,
-                        displayName = user.displayName ?: if (user.isAnonymous) "Guest Voyager" else user.email?.substringBefore("@"),
-                        email = user.email ?: if (user.isAnonymous) "Anonymous Sync Session" else "user@geminiplace.ai",
+                        displayName = name,
+                        email = displayEmail,
                         photoUrl = user.photoUrl?.toString(),
-                        isAnonymous = user.isAnonymous
+                        isAnonymous = isAnon
                     )
-                    _syncStatus.value = "Connected • ${user.email ?: "Guest"}"
+                    _syncStatus.value = if (displayEmail != null) "Connected • $displayEmail" else "Connected • Anonymous Guest"
                     attachRealtimeSync(user.uid)
                 } else {
                     _currentUser.value = null
@@ -86,8 +89,8 @@ class FirebaseSyncManager(private val context: Context) {
             _syncStatus.value = "Local Sync Mode"
             _currentUser.value = UserProfile(
                 uid = "local-user-id",
-                displayName = "Gemini Explorer",
-                email = "explorer@geminiplace.ai",
+                displayName = "Guest Explorer",
+                email = null,
                 photoUrl = null,
                 isAnonymous = true
             )
@@ -112,9 +115,20 @@ class FirebaseSyncManager(private val context: Context) {
                 if (auth != null) {
                     try {
                         auth?.signInWithEmailAndPassword(email, pass)?.await()
-                    } catch (e: Exception) {
-                        // If user doesn't exist, create account
-                        auth?.createUserWithEmailAndPassword(email, pass)?.await()
+                    } catch (signInErr: Exception) {
+                        val msg = signInErr.message.orEmpty()
+                        if (msg.contains("no user record", ignoreCase = true) ||
+                            msg.contains("user-not-found", ignoreCase = true) ||
+                            msg.contains("invalid-credential", ignoreCase = true)
+                        ) {
+                            try {
+                                auth?.createUserWithEmailAndPassword(email, pass)?.await()
+                            } catch (_: Exception) {
+                                throw signInErr
+                            }
+                        } else {
+                            throw signInErr
+                        }
                     }
                     withContext(Dispatchers.Main) { onSuccess() }
                 } else {

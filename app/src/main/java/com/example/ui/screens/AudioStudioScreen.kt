@@ -1,5 +1,9 @@
 package com.example.ui.screens
 
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -74,6 +78,14 @@ fun AudioStudioScreen(viewModel: GeminiPlaceViewModel, modifier: Modifier = Modi
     val isPlaying by viewModel.audioHelper.isPlaying.collectAsState()
     val isRecording by viewModel.audioHelper.isRecording.collectAsState()
     val selectedVoice by viewModel.selectedTtsVoice.collectAsState()
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            viewModel.startLiveMicRecording()
+        }
+    }
     val isLyriaPro by viewModel.isLyriaPro.collectAsState()
     val transcriptionResult by viewModel.transcriptionResult.collectAsState()
     val liveVoiceStatus by viewModel.liveVoiceStatus.collectAsState()
@@ -313,7 +325,11 @@ fun AudioStudioScreen(viewModel: GeminiPlaceViewModel, modifier: Modifier = Modi
                                         if (isRecording) {
                                             viewModel.stopMicAndTranscribe()
                                         } else {
-                                            viewModel.startLiveMicRecording()
+                                            if (ContextCompat.checkSelfPermission(context, android.Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                                                viewModel.startLiveMicRecording()
+                                            } else {
+                                                permissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                                            }
                                         }
                                     }
                                     .testTag("record_transcribe_button"),

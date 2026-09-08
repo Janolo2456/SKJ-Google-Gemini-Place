@@ -134,12 +134,12 @@ fun CloudSyncScreen(viewModel: GeminiPlaceViewModel, modifier: Modifier = Modifi
 
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = currentUser?.displayName ?: "Guest Explorer",
+                                text = if (currentUser?.isAnonymous == false) (currentUser?.displayName ?: "User") else "Guest Explorer",
                                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                             Text(
-                                text = currentUser?.email ?: "Cross-device sync ready",
+                                text = if (currentUser?.isAnonymous == false && currentUser?.email != null) currentUser?.email!! else "Anonymous Guest Session • Ready to sync",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -261,81 +261,91 @@ fun CloudSyncScreen(viewModel: GeminiPlaceViewModel, modifier: Modifier = Modifi
     if (showAuthDialog) {
         AlertDialog(
             onDismissRequest = { showAuthDialog = false },
-            title = { Text("Sign In with Firebase Auth", fontWeight = FontWeight.Bold) },
+            title = { Text("Sign In or Register", fontWeight = FontWeight.Bold) },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(
-                        text = "Sign in to synchronize your Gemini creations, chat threads, and generated media across all devices.",
-                        style = MaterialTheme.typography.bodySmall
+                        text = "Enter your personal email and password to sync your creations across devices via Firebase.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
                     OutlinedTextField(
                         value = emailInput,
-                        onValueChange = { emailInput = it },
-                        label = { Text("Email") },
-                        modifier = Modifier.fillMaxWidth(),
+                        onValueChange = {
+                            emailInput = it
+                            authError = null
+                        },
+                        label = { Text("Email Address") },
+                        placeholder = { Text("e.g. your.email@gmail.com") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("auth_email_input"),
                         singleLine = true
                     )
 
                     OutlinedTextField(
                         value = passwordInput,
-                        onValueChange = { passwordInput = it },
-                        label = { Text("Password") },
-                        modifier = Modifier.fillMaxWidth(),
+                        onValueChange = {
+                            passwordInput = it
+                            authError = null
+                        },
+                        label = { Text("Password (min 6 characters)") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("auth_password_input"),
                         singleLine = true
                     )
 
                     authError?.let { err ->
-                        Text(text = err, color = GeminiAccentRose, style = MaterialTheme.typography.bodySmall)
-                    }
-
-                    // Google Sign-In Quick Pill
-                    Surface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                viewModel.syncManager.signInWithEmail(
-                                    email = "google.user@geminiplace.ai",
-                                    pass = "google-auth-token-1234",
-                                    onSuccess = { showAuthDialog = false },
-                                    onError = { authError = it }
-                                )
-                            },
-                        shape = RoundedCornerShape(10.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant,
-                        border = androidx.compose.foundation.BorderStroke(1.dp, GeminiPrimary)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
-                        ) {
-                            Icon(Icons.Default.AccountCircle, contentDescription = null, tint = GeminiPrimary)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("One-Tap Sign In with Google", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
-                        }
+                        Text(
+                            text = err,
+                            color = GeminiAccentRose,
+                            style = MaterialTheme.typography.bodySmall
+                        )
                     }
                 }
             },
             confirmButton = {
                 Button(
                     onClick = {
-                        if (emailInput.isNotBlank() && passwordInput.isNotBlank()) {
-                            viewModel.syncManager.signInWithEmail(
-                                email = emailInput,
-                                pass = passwordInput,
-                                onSuccess = { showAuthDialog = false },
-                                onError = { authError = it }
-                            )
+                        val trimmedEmail = emailInput.trim()
+                        val trimmedPass = passwordInput.trim()
+                        when {
+                            trimmedEmail.isBlank() -> {
+                                authError = "Please enter your email address."
+                            }
+                            !trimmedEmail.contains("@") -> {
+                                authError = "Please enter a valid email address."
+                            }
+                            trimmedPass.length < 6 -> {
+                                authError = "Password must be at least 6 characters."
+                            }
+                            else -> {
+                                viewModel.syncManager.signInWithEmail(
+                                    email = trimmedEmail,
+                                    pass = trimmedPass,
+                                    onSuccess = {
+                                        showAuthDialog = false
+                                        emailInput = ""
+                                        passwordInput = ""
+                                    },
+                                    onError = { authError = it }
+                                )
+                            }
                         }
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = GeminiPrimary)
+                    colors = ButtonDefaults.buttonColors(containerColor = GeminiPrimary),
+                    modifier = Modifier.testTag("auth_confirm_button")
                 ) {
-                    Text("Continue", color = Color.Black)
+                    Text("Continue", color = Color.Black, fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showAuthDialog = false }) {
+                TextButton(onClick = {
+                    showAuthDialog = false
+                    authError = null
+                }) {
                     Text("Cancel")
                 }
             }
@@ -349,13 +359,17 @@ fun CreationSyncCard(
     onDelete: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var showDetailDialog by remember { mutableStateOf(false) }
     val dateStr = remember(item.timestamp) {
         val sdf = SimpleDateFormat("MMM d, h:mm a", Locale.getDefault())
         sdf.format(Date(item.timestamp))
     }
 
     Card(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable { showDetailDialog = true }
+            .testTag("creation_card_${item.id}"),
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
@@ -436,5 +450,37 @@ fun CreationSyncCard(
                 )
             }
         }
+    }
+
+    if (showDetailDialog) {
+        AlertDialog(
+            onDismissRequest = { showDetailDialog = false },
+            title = { Text(text = item.title.ifEmpty { item.type.name }, fontWeight = FontWeight.Bold) },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(text = "Model: ${item.model}", style = MaterialTheme.typography.labelMedium)
+                    Text(text = "Type: ${item.type.name}", style = MaterialTheme.typography.labelMedium)
+                    Text(text = "Date: $dateStr", style = MaterialTheme.typography.labelMedium)
+                    if (item.prompt.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(text = "Prompt:", style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold))
+                        Text(text = item.prompt, style = MaterialTheme.typography.bodySmall)
+                    }
+                    if (!item.textResult.isNullOrEmpty()) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(text = "Result:", style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold))
+                        Text(text = item.textResult!!, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showDetailDialog = false }) {
+                    Text("Close", fontWeight = FontWeight.Bold)
+                }
+            }
+        )
     }
 }
