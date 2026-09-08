@@ -1,0 +1,6 @@
+{
+  "name": "Gemini Place",
+  "description": "All-in-one Gemini AI hub featuring multi-turn chat, image creation & editing, Veo video generation, Lyria music creation, text-to-speech, live voice conversations, audio transcription, vision & video understanding, Google Search & Maps grounding, high-thinking mode, and cross-device Firebase sync.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
